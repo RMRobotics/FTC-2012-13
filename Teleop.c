@@ -16,12 +16,9 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//                           Tele-Operation Mode Code Template
+//                           RMRobotics Tele-Operation Mode Code
 //
-// This file contains a template for simplified creation of an tele-op program for an FTC
-// competition.
-//
-// You need to customize two functions with code unique to your specific robot.
+// TODO: Fill in description
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -42,6 +39,15 @@
 #define	SPINRIGHT 9                    //spin right move all motors cw
 
 typedef struct {
+    // The desired direction is the directory that the user intends the robot
+    // to move based on joystick input.
+    int desiredDriveDirection;
+
+    bool btnPressed;
+    bool autoMode;
+
+    // The following track the current motor speeds and positions
+    // of arms.
 	int motorLeftSpeed;
 	int motorRightSpeed;
 	int motorFrontSpeed;
@@ -50,35 +56,28 @@ typedef struct {
 	int armPosition;
 	int liftSpeed;
 	int wristPosition;
-	bool btnPressed;
-	bool autoMode;
 } State;
 
 void handleDriveInputs(State *state);
-void drive(State *state, int dir);
+void drive(State *state);
 void handleArmInputs(State *state);
 void handleWristInputs(State *state);
 void handleLiftInputs(State *state);
 void checkState(State *theoreticalState, State *realState);
-void updateState(State *state);
+void updateAllMotors(State *state);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //                                    initializeRobot
 //
-// Prior to the start of tele-op mode, you may want to perform some initialization on your robot
-// and the variables within your program.
-//
-// In most cases, you may not have to add any code to this function and it will remain "empty".
-//
 /////////////////////////////////////////////////////////////////////////////////////////////////////
-
 void initializeRobot()
 {
-  // Place code here to sinitialize servos to starting positions.
-  // Sensors are automatically configured and setup by ROBOTC. They may need a brief time to stabilize.
+   //set motors to lock when unpowered
+   bFloatDuringInactiveMotorPWM = false;
 
-  return;
+   // TODO - Document why you need to set this to 0
+   nMotorEncoder[arm] = 0;
 }
 
 
@@ -86,8 +85,10 @@ void initializeRobot()
 //
 //                                         Main Task
 //
-// The following is the main code for the tele-op robot operation. Customize as appropriate for
-// your specific robot.
+// TODO - Write up a little bit about how your program works. You might want to document the
+//        how the controls work.
+//
+// The following is the main code for the tele-op robot operation.
 //
 // Game controller / joystick information is sent periodically (about every 50 milliseconds) from
 // the FMS (Field Management System) to the robot. Most tele-op programs will follow the following
@@ -113,43 +114,32 @@ task main()
 {
   initializeRobot();
 
-  bFloatDuringInactiveMotorPWM = false; //set motors to lock when unpowered
-
-	State theoreticalState;
-	State realState;
-	// Initialize everything in the theoretical and current state to 0.
-	memset(&theoreticalState, 0, sizeof(theoreticalState));
-	memset(&realState, 0, sizeof(realState));
-
-	nMotorEncoder[arm] = 0;
+  State nextState;
+  State currentState;
+  // Initialize everything in the theoretical and current state to 0.
+  memset(&nextState, 0, sizeof(nextState));
+  memset(&currentState, 0, sizeof(currentState));
 
   waitForStart();   // wait for start of tele-op phase
 
   while (true)
   {
-	  ///////////////////////////////////////////////////////////
-	  ///////////////////////////////////////////////////////////
-	  ////                                                   ////
-	  ////      Add your robot specific tele-op code here.   ////
-	  ////                                                   ////
-	  ///////////////////////////////////////////////////////////
-	  ///////////////////////////////////////////////////////////
+    // Wait for the next update from the joystick.
+    getJoystickSettings(joystick);
 
-    // Insert code to have servos and motors respond to joystick and button values.
+    // Prepare to update our state.
+    nextState = currentState;
 
-    // Look in the ROBOTC samples folder for programs that may be similar to what you want to perform.
-    // You may be able to find "snippets" of code that are similar to the functions that you want to
-    // perform.
+    // Process the joystick input
+    handleDriveInputs(&nextState);
+    handleLiftInputs(&nextState);
+    handleArmInputs(&nextState);
 
-		getJoystickSettings(joystick);
+    drive(nextState);
 
-		handleDriveInputs(&theoreticalState);
-		handleLiftInputs(&theoreticalState);
-		handleArmInputs(&theoreticalState);
+    checkState(&nextState, &currentState);
 
-		checkState(&theoreticalState, &realState);
-
-		updateState(&realState);
+    updateAllMotors(&currentState);
   }
 }
 
@@ -202,11 +192,11 @@ void handleDriveInputs (State *state)
 
 void handleDriveInputsOLD (State *state)
 {
-	int dir = -1;
+    // The joystick input corresponds conveniently to the
+    // direction constants (FORWARD, BACKWARD, etc)
+    state->desiredDriveDirection = joystick.joy1_TopHat;
 
-	dir = joystick.joy1_TopHat;
 	/*
-	I defined the direction constants (FORWARD, BACKWARD, etc) to be the values returned by joy1_TopHat for the corresponding direction.
 	For example, joy1_TopHat returns 0 when the tophat is pressed foward, and FORWARD is defined as 0.
 	Thus, the above statement gives the same result as the below switch statement:
 
@@ -223,16 +213,71 @@ void handleDriveInputsOLD (State *state)
 	}
 	*/
 
+    // Check the buttons
 	if (joy1Btn(1) == 1) {
-		dir = SPINLEFT;
+        state->desiredDriveDirection = SPINLEFT;
 	} else if (joy1Btn(3) == 1) {
-		dir = SPINRIGHT;
+        state->desiredDriveDirection = SPINRIGHT;
 	}
-
-	drive(state, dir);
 }
 
-void drive(State *state, int dir)
+void handleArmInputs(State *state)
+{
+    // Button 5 to raise arm, button 7 to lower arm
+    if(joy1Btn(5) == 1)	{
+        state->armSpeed = ARMSPEED;
+    }
+    else if(joy1Btn(7) == 1) {
+        state->armSpeed = -ARMSPEED;
+    }
+    else {
+        state->armSpeed = 0;
+    }
+}
+
+void handleWristInputs(State *state)
+{
+    // Detect if button was clicked, not just if it's being pressed. If it was clicked, switch auto mode on/off
+    if (joy1Btn(10) == 1 && !state->btnPressed) {
+        state->autoMode = !state->autoMode;
+        state->btnPressed = true;
+        state->armPosition = nMotorEncoder[arm];
+    }
+    else if (joy1Btn(10) == 0) {
+      state->btnPressed = false;
+    }
+
+    // If auto mode on, sync arm and wrist. Else, allow manual control of wrist position.
+    //     *synced meaning 1deg up on arm makes wrist go down 1deg so that wrist always meaintains the same orientation to the ground
+    if (state->autoMode) {
+        state->wristPosition = ServoValue[wrist]-(nMotorEncoder[arm]-state->armPosition)/4; // servo values correspond to degrees, encoder values correspond to 1/4 degrees
+        state->armPosition = nMotorEncoder[arm];
+    }
+    else { // Button 6 to raise wrist, button 8 to lower wrist (if wrist isn't being synced to arm)
+        if (joy1Btn(6) == 1 && state->wristPosition <= 254) {
+            ++state->wristPosition;
+        }
+        else if (joy1Btn(8) == 1 && state->wristPosition >= 1) {
+        --state->wristPosition;
+        }
+    }
+}
+
+void handleLiftInputs(State *state)
+{
+    // joystick 1 forward to raise lift, backward to lower lift
+    if(joystick.joy1_y1 >= 20) {
+        state->liftSpeed = LIFTSPEED;
+    }
+    else if(joystick.joy1_y1 <= -20) {
+      state->liftSpeed = -LIFTSPEED;
+    }
+    else {
+      state->liftSpeed = 0;
+    }
+}
+
+void drive(State *state)
 {
 	/*
 	DIRECTION PARAMETER: (cw/ccw are determined from perspective of robot's center)
@@ -249,7 +294,7 @@ void drive(State *state, int dir)
 	spin right						move all motors cw
 	*/
 
-	switch(dir) {
+    switch(state->desiredDriveDirection) {
 		case FORWARD: state->motorFrontSpeed = 0;
 							state->motorBackSpeed = 0;
 							state->motorLeftSpeed = DRIVESPEED;
@@ -307,62 +352,6 @@ void drive(State *state, int dir)
 	}
 }
 
-void handleArmInputs(State *state)
-{
-	// Button 5 to raise arm, button 7 to lower arm
-	if(joystick.joy1_y1 > 10) {
-		state->armSpeed = ARMSPEED;
-	}
-	else if(joystick.joy1_y1 < -10) {
-		state->armSpeed = -ARMSPEED;
-	}
-	else {
-		state->armSpeed = 0;
-	}
-}
-
-void handleWristInputs(State *state)
-{
-	// Detect if button was clicked, not just if it's being pressed. If it was clicked, switch auto mode on/off
-	if (joy1Btn(10) == 1 && !state->btnPressed) {
-		state->autoMode = !state->autoMode;
-		state->btnPressed = true;
-		state->armPosition = nMotorEncoder[arm];
-	}
-	else if (joy1Btn(10) == 0) {
-	  state->btnPressed = false;
-	}
-
-	// If auto mode on, sync arm and wrist. Else, allow manual control of wrist position.
-	//     *synced meaning 1deg up on arm makes wrist go down 1deg so that wrist always meaintains the same orientation to the ground
-	if (state->autoMode) {
-		state->wristPosition = ServoValue[wrist]-(nMotorEncoder[arm]-state->armPosition)/4; // servo values correspond to degrees, encoder values correspond to 1/4 degrees
-		state->armPosition = nMotorEncoder[arm];
-	}
-	else { // Button 6 to raise wrist, button 8 to lower wrist (if wrist isn't being synced to arm)
-		if (joy1Btn(6) == 1 && state->wristPosition <= 254) {
-			++state->wristPosition;
-		}
-		else if (joy1Btn(8) == 1 && state->wristPosition >= 1) {
-	  	--state->wristPosition;
-		}
-	}
-}
-
-void handleLiftInputs(State *state)
-{
-	// joystick 1 forward to raise lift, backward to lower lift
-	if(joy1Btn(5) == 1) {
-		state->liftSpeed = LIFTSPEED;
-	}
-	else if(joy1Btn(7) == 1) {
-	  state->liftSpeed = -LIFTSPEED;
-	}
-	else {
-	  state->liftSpeed = 0;
-	}
-}
-
 void checkState(State *theoreticalState, State *realState)
 {
 	realState = theoreticalState;
@@ -382,7 +371,7 @@ void checkState(State *theoreticalState, State *realState)
 	}
 }
 
-void updateState(State *state)
+void updateAllMotors(State *state)
 {
 	motor[front] = state->motorFrontSpeed;
 	motor[back] = state->motorBackSpeed;
