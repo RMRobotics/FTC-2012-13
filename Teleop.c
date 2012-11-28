@@ -153,7 +153,54 @@ task main()
   }
 }
 
-void handleDriveInputs(State *state)
+void handleDriveInputs (State *state)
+{
+	int dir = -1;
+
+	int x = joystick.joy1_x2;
+	int y = joystick.joy1_y2;
+	if (x == 0) x = 0.1;
+	int angle = atan2(y, x);
+
+	if (abs(x) > 10 && abs(y) > 10) {
+		if (x > 0) {
+			if (angle > 3*PI/8) {
+				dir = FORWARD;
+			} else if (angle > PI/8) {
+				dir = DIAGONALFOWARDRIGHT;
+			} else if (angle > -PI/8) {
+				dir = RIGHT;
+			} else if (angle > -3*PI/8) {
+				dir = DIAGONALBACKWARDRIGHT;
+			} else {
+			  dir = BACKWARD;
+			}
+		} else {
+			if (angle < -3*PI/8){
+				dir = FORWARD;
+			} else if (angle < -PI/8) {
+				dir = DIAGONALFOWARDRIGHT;
+			} else if (angle < PI/8) {
+				dir = RIGHT;
+			} else if (angle < 3*PI/8) {
+				dir = DIAGONALBACKWARDRIGHT;
+			} else {
+			  dir = BACKWARD;
+			}
+		}
+	}
+
+	switch (joystick.joy1_TopHat) {
+		case 0: dir = FORWARD; break;
+		case 4: dir = BACKWARD; break;
+		case 2: dir = SPINRIGHT;
+		case 6: dir = SPINLEFT;
+	}
+
+	drive(state, dir);
+}
+
+void handleDriveInputsOLD (State *state)
 {
 	int dir = -1;
 
@@ -263,10 +310,10 @@ void drive(State *state, int dir)
 void handleArmInputs(State *state)
 {
 	// Button 5 to raise arm, button 7 to lower arm
-	if(joy1Btn(5) == 1)	{
+	if(joystick.joy1_y1 > 10) {
 		state->armSpeed = ARMSPEED;
 	}
-	else if(joy1Btn(7) == 1) {
+	else if(joystick.joy1_y1 < -10) {
 		state->armSpeed = -ARMSPEED;
 	}
 	else {
@@ -305,10 +352,10 @@ void handleWristInputs(State *state)
 void handleLiftInputs(State *state)
 {
 	// joystick 1 forward to raise lift, backward to lower lift
-	if(joystick.joy1_y1 >= 20) {
+	if(joy1Btn(5) == 1) {
 		state->liftSpeed = LIFTSPEED;
 	}
-	else if(joystick.joy1_y1 <= -20) {
+	else if(joy1Btn(7) == 1) {
 	  state->liftSpeed = -LIFTSPEED;
 	}
 	else {
@@ -325,9 +372,13 @@ void checkState(State *theoreticalState, State *realState)
 	//     *synced meaning 1deg up on arm makes wrist go down 1deg so that wrist always meaintains the same orientation to the ground
 	if(theoreticalState->wristPosition < 0) {
 		realState->wristPosition = 0;
-	}
-	else if(theoreticalState->wristPosition > 255) {
+	}	else if(theoreticalState->wristPosition > 255) {
 		realState->wristPosition = 255;
+	}
+
+	if (joystick.joy1_TopHat == 0 || joystick.joy1_TopHat == 4) {
+		realState->motorRightSpeed *= 1/4;
+		realState->motorLeftSpeed *= 1/4;
 	}
 }
 
