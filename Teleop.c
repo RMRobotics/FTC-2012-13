@@ -38,12 +38,24 @@
 #define	SPINLEFT 8                     //spin left	move all motors ccw
 #define	SPINRIGHT 9                    //spin right move all motors cw
 
+
 typedef struct {
+    TJoystick joy;
+
+    short joy1_Buttons_Changed;  // Bit map for the 12 buttons. 1 means that the button changed state
+    short joy2_Buttons_Changed;
+} UserInput;
+
+typedef struct {
+    // Keep track what buttons were previously pressed so that
+    // we can figure out whether their state changed.
+    short old_joy1_Buttons;
+    short old_joy2_Buttons;
+
     // The desired direction is the directory that the user intends the robot
     // to move based on joystick input.
     int desiredDriveDirection;
 
-    bool btnPressed;
     bool autoMode;
 
     // The following track the current motor speeds and positions
@@ -58,12 +70,13 @@ typedef struct {
 	int wristPosition;
 } State;
 
-void handleDriveInputs(State *state);
-void drive(State *state);
+void getLatestInput(State *state, UserInput *input);
+void handleDriveInputs(State *state, UserInput *input);
+void computeDriveMotorSpeeds(State *state);
 void handleArmInputs(State *state);
 void handleWristInputs(State *state);
 void handleLiftInputs(State *state);
-void checkState(State *theoreticalState, State *realState);
+void computeActualState(State *desiredState, State *actualState);
 void updateAllMotors(State *state);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -73,13 +86,12 @@ void updateAllMotors(State *state);
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 void initializeRobot()
 {
-   //set motors to lock when unpowered
+   // Set motors to lock when unpowered
    bFloatDuringInactiveMotorPWM = false;
 
-   // TODO - Document why you need to set this to 0
+   // Initialize the arm to a known position
    nMotorEncoder[arm] = 0;
 }
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -114,41 +126,61 @@ task main()
 {
   initializeRobot();
 
-  State nextState;
-  State currentState;
-  // Initialize everything in the theoretical and current state to 0.
-  memset(&nextState, 0, sizeof(nextState));
-  memset(&currentState, 0, sizeof(currentState));
+  State actualState;
+  State desiredState;
+  // Initialize everything in the desired and actual state to 0.
+  memset(&actualState, 0, sizeof(actualState));
+  memset(&desiredState, 0, sizeof(desiredState));
 
   waitForStart();   // wait for start of tele-op phase
 
   while (true)
   {
     // Wait for the next update from the joystick.
-    getJoystickSettings(joystick);
-
-    // Prepare to update our state.
-    nextState = currentState;
+    UserInput input;
+    getLatestInput(&desiredState, &input);
 
     // Process the joystick input
-    handleDriveInputs(&nextState);
-    handleLiftInputs(&nextState);
-    handleArmInputs(&nextState);
+    handleDriveInputs(&desiredState, &input);
+    handleLiftInputs(&desiredState, &input);
+    handleArmInputs(&desiredState, &input);
 
-    drive(nextState);
+    computeDriveMotorSpeeds(&desiredState);
+    computeActualState(&desiredState, &actualState);
 
-    checkState(&nextState, &currentState);
-
-    updateAllMotors(&currentState);
+    updateAllMotors(&actualState);
   }
 }
 
-void handleDriveInputs (State *state)
+void getLatestInput(State *state, UserInput *input)
+{
+    // Get the current joystick position
+    getJoystickSettings(joystick);
+
+    // Fill out our input structure
+    input->joy = joystick;
+
+    // Calculate which buttons changed.
+    input->joy1_Buttons_Changed = input->joy.joy1_Buttons ^ state->old_joy1_Buttons;
+    input->joy2_Buttons_Changed = input->joy.joy2_Buttons ^ state->old_joy2_Buttons;
+
+    // Update state for next time.
+    state->old_joy1_Buttons = input->joy.joy1_Buttons;
+    state->old_joy2_Buttons = input->joy.joy2_Buttons;
+}
+
+int joyButton(short bitmask, int button)
+{
+    return bitmask & (1 << (button - 1));
+}
+
+
+void handleDriveInputs(State *state, UserInput *input)
 {
 	int dir = -1;
 
-	int x = joystick.joy1_x2;
-	int y = joystick.joy1_y2;
+    int x = input->joy.joy1_x2;
+    int y = input->joy.joy1_y2;
 	if (x == 0) x = 0.1;
 	int angle = atan2(y, x);
 
@@ -180,54 +212,23 @@ void handleDriveInputs (State *state)
 		}
 	}
 
-	switch (joystick.joy1_TopHat) {
+    switch (input->joy.joy1_TopHat) {
 		case 0: dir = FORWARD; break;
 		case 4: dir = BACKWARD; break;
 		case 2: dir = SPINRIGHT;
 		case 6: dir = SPINLEFT;
 	}
 
-	drive(state, dir);
+    state->desiredDriveDirection = dir;
 }
 
-void handleDriveInputsOLD (State *state)
-{
-    // The joystick input corresponds conveniently to the
-    // direction constants (FORWARD, BACKWARD, etc)
-    state->desiredDriveDirection = joystick.joy1_TopHat;
-
-	/*
-	For example, joy1_TopHat returns 0 when the tophat is pressed foward, and FORWARD is defined as 0.
-	Thus, the above statement gives the same result as the below switch statement:
-
-	switch (joystick.joy1_TopHat) {
-		case 0: dir = FORWARD; break;
-		case 1: dir = DIAGONALFOWARDRIGHT; break;
-		case 2: dir = RIGHT; break;
-		case 3: dir = DIAGONALBACKWARDRIGHT; break;
-		case 4: dir = BACKWARD; break;
-		case 5: dir = DIAGONALBACKWARDLEFT; break;
-		case 6: dir = LEFT; break;
-		case 7: dir = DIAGONALFOWARDLEFT; break;
-		default: dir = -1;
-	}
-	*/
-
-    // Check the buttons
-	if (joy1Btn(1) == 1) {
-        state->desiredDriveDirection = SPINLEFT;
-	} else if (joy1Btn(3) == 1) {
-        state->desiredDriveDirection = SPINRIGHT;
-	}
-}
-
-void handleArmInputs(State *state)
+void handleArmInputs(State *state, UserInput *input)
 {
     // Button 5 to raise arm, button 7 to lower arm
-    if(joy1Btn(5) == 1)	{
+    if (joyButton(input->joy.joy1_Buttons, 5))	{
         state->armSpeed = ARMSPEED;
     }
-    else if(joy1Btn(7) == 1) {
+    else if(joyButton(input->joy.joy1_Buttons, 7)) {
         state->armSpeed = -ARMSPEED;
     }
     else {
@@ -235,16 +236,13 @@ void handleArmInputs(State *state)
     }
 }
 
-void handleWristInputs(State *state)
+void handleWristInputs(State *state, UserInput *input)
 {
-    // Detect if button was clicked, not just if it's being pressed. If it was clicked, switch auto mode on/off
-    if (joy1Btn(10) == 1 && !state->btnPressed) {
+    // Toggle automode if button 10 was clicked (i.e. changed and button down)
+    if (joyButton(input->joy1_Buttons_Changed, 10) &&
+            joyButton(input->joy.joy1_Buttons, 10)) {
         state->autoMode = !state->autoMode;
-        state->btnPressed = true;
         state->armPosition = nMotorEncoder[arm];
-    }
-    else if (joy1Btn(10) == 0) {
-      state->btnPressed = false;
     }
 
     // If auto mode on, sync arm and wrist. Else, allow manual control of wrist position.
@@ -254,22 +252,22 @@ void handleWristInputs(State *state)
         state->armPosition = nMotorEncoder[arm];
     }
     else { // Button 6 to raise wrist, button 8 to lower wrist (if wrist isn't being synced to arm)
-        if (joy1Btn(6) == 1 && state->wristPosition <= 254) {
+        if (joyButton(input->joy.joy1_Buttons, 6) && state->wristPosition <= 254) {
             ++state->wristPosition;
         }
-        else if (joy1Btn(8) == 1 && state->wristPosition >= 1) {
+        else if (joyButton(input->joy.joy1_Buttons, 8) && state->wristPosition >= 1) {
         --state->wristPosition;
         }
     }
 }
 
-void handleLiftInputs(State *state)
+void handleLiftInputs(State *state, UserInput *input)
 {
     // joystick 1 forward to raise lift, backward to lower lift
-    if(joystick.joy1_y1 >= 20) {
+    if(input->joy.joy1_y1 >= 20) {
         state->liftSpeed = LIFTSPEED;
     }
-    else if(joystick.joy1_y1 <= -20) {
+    else if(input->joy.joy1_y1 <= -20) {
       state->liftSpeed = -LIFTSPEED;
     }
     else {
@@ -277,7 +275,7 @@ void handleLiftInputs(State *state)
     }
 }
 
-void drive(State *state)
+void computeDriveMotorSpeeds(State *state)
 {
 	/*
 	DIRECTION PARAMETER: (cw/ccw are determined from perspective of robot's center)
@@ -352,22 +350,23 @@ void drive(State *state)
 	}
 }
 
-void checkState(State *theoreticalState, State *realState)
+void computeActualState(State *desiredState, State *actualState)
 {
-	realState = theoreticalState;
+    actualState = desiredState;
 
 	// If theoretical wrist position is outside of the servo's range, change it to the closest value within the servo's range
 	// The theoretial value is kept though so that if the wrist is synced with the arm, it'll return to being synced once servo values are back in range
 	//     *synced meaning 1deg up on arm makes wrist go down 1deg so that wrist always meaintains the same orientation to the ground
-	if(theoreticalState->wristPosition < 0) {
-		realState->wristPosition = 0;
-	}	else if(theoreticalState->wristPosition > 255) {
-		realState->wristPosition = 255;
+    if(desiredState->wristPosition < 0) {
+        actualState->wristPosition = 0;
+    }	else if(desiredState->wristPosition > 255) {
+        actualState->wristPosition = 255;
 	}
 
+    // TODO - Jon move this code some place else.
 	if (joystick.joy1_TopHat == 0 || joystick.joy1_TopHat == 4) {
-		realState->motorRightSpeed *= 1/4;
-		realState->motorLeftSpeed *= 1/4;
+        actualState->motorRightSpeed *= 1/4;
+        actualState->motorLeftSpeed *= 1/4;
 	}
 }
 
