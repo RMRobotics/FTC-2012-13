@@ -153,6 +153,7 @@ void initializeRobot()
 //                                 ON: wrist automatically moves with arm
 //                                 OFF: manual control of wrist
 //
+// NOTE: ASCII Art adapted from: http://chris.com/ascii/index.php?art=video%20games/other
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 task main()
