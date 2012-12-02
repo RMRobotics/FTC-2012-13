@@ -114,6 +114,28 @@ void initializeRobot()
 //
 //                                         Main Task
 //
+// This is the main loop for the Tele-op program.
+//
+// The current controls to the robot are the following:
+//
+//               _=====_                               _=====_
+//              / _____ \                             / _____ \
+//            +.-'_____'-.---------------------------.-'_____'-.+
+//           /   |     |  '.                       .'  |  _  |   \
+//          / ___| /|\ |___ \                     / ___| /_\ |___ \
+//         / |      |      | ;  __           _   ; | _         _ | ;
+//         | | <---   ---> | | |__|         |_:> | ||_|       (_)| |
+//         | |___   |   ___| ;SELECT       START ; |___       ___| ;
+//         |\    | \|/ |    /  _     ___      _   \    | (X) |    /|
+//         | \   |_____|  .','" "', |___|  ,'" "', '.  |_____|  .' |
+//         |  '-.______.-' /       \ANALOG/       \  '-._____.-'   |
+//         |               |       |------|       |                |
+//         |              /\       /      \       /\               |
+//         |             /  '.___.'        '.___.'  \              |
+//         |            /                            \             |
+//          \          /                              \           /
+//           \________/                                \_________/
+//
 // Controls:
 //   Tophat (D-pad)
 //     Left:.......................Spin left
@@ -176,7 +198,7 @@ void getLatestInput(State *state, UserInput *input)
 	// Get the current joystick position
 	getJoystickSettings(joystick);
 
-	// Fill out our input structure
+    // Fill out our input structure
 	//input->joy = joystick; // It doesn't work, doesn't copy the values in joystick to input->joy
 		//for now, I'm using joystick to access the joystick controller inputs
 
@@ -397,6 +419,13 @@ void computeDriveMotorSpeeds(State *state)
 
 void computeActualState(State *desiredState, State *actualState)
 {
+    // If structure copy is supported by the compiler, then the line that you
+    // want is this:
+    *actualState = *desiredState;
+
+    // If not, memcpy should work:
+    // memcpy(actualState, desiredState, sizeof(State));
+
 	//actualState = desiredState; // It doesn't work. It doesn't copy the values in desiredState to actualState
 		//for now, I'm individually copying the values needed for updateAllMotors to work.
 	actualState->motorLeftSpeed = desiredState->motorLeftSpeed;
