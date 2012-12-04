@@ -142,14 +142,14 @@ void initializeRobot()
 //     Right:......................Spin right
 //   Left Joystick:................Lift up/down
 //   Right Joystick:...............Movement
-//   Button 1:.....................Release tines
-//   Button 2:.....................Deploy outrigger
+//   Button 1 (Square):............Release tines
+//   Button 2 (X):.................Deploy outrigger
 //   Button 5 (Left Bumper):.......Arm up
 //   Button 7 (Left Trigger):......Arm down
 //   Button 6 (Right Bumper):......Wrist up
 //   Button 8 (Right Trigger):.....Wrist down
-//   Button 9:.....................Toggle movement speed (slow/fast)
-//   Button 10:....................Toggle autoMode
+//   Button 9 (Select):............Toggle movement speed (slow/fast)
+//   Button 10 (Start):............Toggle autoMode
 //                                 ON: wrist automatically moves with arm
 //                                 OFF: manual control of wrist
 //
@@ -199,17 +199,16 @@ void getLatestInput(State *state, UserInput *input)
 	// Get the current joystick position
 	getJoystickSettings(joystick);
 
-    // Fill out our input structure
-	//input->joy = joystick; // It doesn't work, doesn't copy the values in joystick to input->joy
-		//for now, I'm using joystick to access the joystick controller inputs
+	// Fill out our input structure
+	memcpy(input->joy, joystick, sizeof(TJoystick));
 
 	// Calculate which buttons changed.
-	input->joy1_Buttons_Changed = joystick.joy1_Buttons ^ state->old_joy1_Buttons;
-	input->joy2_Buttons_Changed = joystick.joy2_Buttons ^ state->old_joy2_Buttons;
+	input->joy1_Buttons_Changed = input->joy.joy1_Buttons ^ state->old_joy1_Buttons;
+	input->joy2_Buttons_Changed = input->joy.joy2_Buttons ^ state->old_joy2_Buttons;
 
 	// Update state for next time.
-	state->old_joy1_Buttons = joystick.joy1_Buttons;
-	state->old_joy2_Buttons = joystick.joy2_Buttons;
+	state->old_joy1_Buttons = input->joy.joy1_Buttons;
+	state->old_joy2_Buttons = input->joy.joy2_Buttons;
 }
 
 int joyButton(short bitmask, int button)
@@ -224,22 +223,22 @@ void handleDriveInputs(State *state, UserInput *input)
 	int dir = -1;
 
 	// Toggle drive speed if button 9 was clicked (i.e. changed and button down)
-	if(joyButton(input->joy1_Buttons_Changed, 9) && joyButton(joystick.joy1_Buttons, 9)) {
+	if(joyButton(input->joy1_Buttons_Changed, 9) && joyButton(input->joy.joy1_Buttons, 9)) {
 		state->desiredDriveSpeed = (DRIVESPEED*DRIVESPEED)/(state->desiredDriveSpeed*4);
 	}
 
 	// movement controlled by right joystick
-	short x = joystick.joy1_x2;
-	short y = joystick.joy1_y2;
+	short x = input->joy.joy1_x2;
+	short y = input->joy.joy1_y2;
 	if (x == 0) x = 1; //to avoid division by 0
-	float angle = atan2(y, x); //find angle using tangent
+		float angle = atan2(y, x); //find angle using tangent
 
 	if (abs(x) > 20 || abs(y) > 20) { //If robot isn't in deadzone...
-		                                //Value of angle, in radians and degrees
-	                                  //  Notice that degrees don't correspond to radians.
-	                                  //  This is because atan2(Y,X) returns angles in radians from -PI to PI
-	                                  //  while using radiansToDegrees(Radians) to convert atan2(Y,X) to degrees
-	                                  //  returns values from 0-360.
+		//Value of angle, in radians and degrees
+		//  Notice that degrees don't correspond to radians.
+		//  This is because atan2(Y,X) returns angles in radians from -PI to PI
+		//  while using radiansToDegrees(Radians) to convert atan2(Y,X) to degrees
+		//  returns values from 0-360.
 		if (angle > 7*PI/8) {           //+2.75 rad, 157.5 deg
 			dir = LEFT;
 			} else if (angle > 5*PI/8) {  //+1.96 rad, 112.5 deg
@@ -262,7 +261,7 @@ void handleDriveInputs(State *state, UserInput *input)
 	}
 
 	// Spinning controlled by left and right on the tophat (d-pad)
-	switch (joystick.joy1_TopHat) {
+	switch (input->joy.joy1_TopHat) {
 	case 2: dir = SPINRIGHT; break;
 	case 6: dir = SPINLEFT;
 	}
@@ -273,10 +272,10 @@ void handleDriveInputs(State *state, UserInput *input)
 void handleArmInputs(State *state, UserInput *input)
 {
 	// Button 5 to raise arm, button 7 to lower arm
-	if (joyButton(joystick.joy1_Buttons, 5))	{
+	if (joyButton(input->joy.joy1_Buttons, 5))	{
 		state->armSpeed = ARMSPEED;
 	}
-	else if(joyButton(joystick.joy1_Buttons, 7)) {
+	else if(joyButton(input->joy.joy1_Buttons, 7)) {
 		state->armSpeed = -ARMSPEED;
 	}
 	else {
@@ -287,7 +286,7 @@ void handleArmInputs(State *state, UserInput *input)
 void handleWristInputs(State *state, UserInput *input)
 {
 	// Toggle automode if button 10 was clicked (i.e. changed and button down)
-	if (joyButton(input->joy1_Buttons_Changed, 10) && joyButton(joystick.joy1_Buttons, 10)) {
+	if (joyButton(input->joy1_Buttons_Changed, 10) && joyButton(input->joy.joy1_Buttons, 10)) {
 		state->autoMode = !state->autoMode;
 		state->armPosition = nMotorEncoder[arm];
 	}
@@ -297,16 +296,16 @@ void handleWristInputs(State *state, UserInput *input)
 	//      meaintains the same orientation to the ground
 	if (state->autoMode) {
 		state->wristPosition -= (nMotorEncoder[arm]-state->armPosition)/4;
-			// servo values correspond to degrees,
-			// encoder values correspond to 1/4 degrees
+		// servo values correspond to degrees,
+		// encoder values correspond to 1/4 degrees
 		state->armPosition = nMotorEncoder[arm];
 	}
 	else {
 		// Button 6 to raise wrist, button 8 to lower wrist (if wrist isn't being synced to arm)
-		if (joyButton(joystick.joy1_Buttons, 6) && state->wristPosition < 220) {
+		if (joyButton(input->joy.joy1_Buttons, 6) && state->wristPosition < 220) {
 			++state->wristPosition;
 		}
-		else if (joyButton(joystick.joy1_Buttons, 8) && state->wristPosition > 20) {
+		else if (joyButton(input->joy.joy1_Buttons, 8) && state->wristPosition > 20) {
 			--state->wristPosition;
 		}
 	}
@@ -315,10 +314,10 @@ void handleWristInputs(State *state, UserInput *input)
 void handleLiftInputs(State *state, UserInput *input)
 {
 	// left joystick forward to raise lift, backward to lower lift
-	if(joystick.joy1_y1 >= 20) {
+	if(input->joy.joy1_y1 >= 20) {
 		state->liftSpeed = LIFTSPEED;
 	}
-	else if(joystick.joy1_y1 <= -20) {
+	else if(input->joy.joy1_y1 <= -20) {
 		state->liftSpeed = -LIFTSPEED;
 	}
 	else {
@@ -328,13 +327,13 @@ void handleLiftInputs(State *state, UserInput *input)
 
 void handleTineInputs(State *state, UserInput *input) {
 	// If button 1 is pressed, release tines;
-	if (joyButton(joystick.joy1_Buttons, 1))
+	if (joyButton(input->joy.joy1_Buttons, 1))
 		state->tineLockPosition=100;
 }
 
 void handleOutriggerInputs(State *state, UserInput *input) {
 	// If button 2 is clicked (ie. changed and pressed down), deploy outriggers
-	if (joyButton(input->joy1_Buttons_Changed, 2) && joyButton(joystick.joy1_Buttons, 2))
+	if (joyButton(input->joy1_Buttons_Changed, 2) && joyButton(input->joy.joy1_Buttons, 2))
 		state->outriggerSpeed=100;
 
 	// Turn off outrigger motors once they're fully deployed
@@ -420,24 +419,7 @@ void computeDriveMotorSpeeds(State *state)
 
 void computeActualState(State *desiredState, State *actualState)
 {
-    // If structure copy is supported by the compiler, then the line that you
-    // want is this:
-    *actualState = *desiredState;
-
-    // If not, memcpy should work:
-    // memcpy(actualState, desiredState, sizeof(State));
-
-	//actualState = desiredState; // It doesn't work. It doesn't copy the values in desiredState to actualState
-		//for now, I'm individually copying the values needed for updateAllMotors to work.
-	actualState->motorLeftSpeed = desiredState->motorLeftSpeed;
-	actualState->motorRightSpeed = desiredState->motorRightSpeed;
-	actualState->motorFrontSpeed = desiredState->motorFrontSpeed;
-	actualState->motorBackSpeed = desiredState->motorBackSpeed;
-	actualState->armSpeed = desiredState->armSpeed;
-	actualState->liftSpeed = desiredState->liftSpeed;
-	actualState->wristPosition = desiredState->wristPosition;
-	actualState->tineLockPosition = desiredState->tineLockPosition;
-	actualState->outriggerSpeed = desiredState->outriggerSpeed;
+	memcpy(actualState, desiredState, sizeof(State));
 
 	// If theoretical wrist position is outside of the servo's range, change it to the
 	// closest value within the servo's range. The theoretial value is kept though so
