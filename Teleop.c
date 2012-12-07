@@ -1,7 +1,8 @@
 #pragma config(Hubs,  S1, HTMotor,  HTMotor,  HTMotor,  HTServo)
 #pragma config(Sensor, S1,     ,               sensorI2CMuxController)
-#pragma config(Motor,  motorA,          outrigger,     tmotorNXT, PIDControl, encoder)
-#pragma config(Motor,  motorB,          outrigger,     tmotorNXT, PIDControl, encoder)
+#pragma config(Motor,  motorA,          outrigger,     tmotorNXT, PIDControl, reversed, encoder)
+#pragma config(Motor,  motorB,          outrigger2,    tmotorNXT, PIDControl, reversed, encoder)
+#pragma config(Motor,  motorC,           ,             tmotorNXT, openLoop)
 #pragma config(Motor,  mtr_S1_C1_1,     right,         tmotorTetrix, openLoop)
 #pragma config(Motor,  mtr_S1_C1_2,     left,          tmotorTetrix, openLoop)
 #pragma config(Motor,  mtr_S1_C2_1,     back,          tmotorTetrix, openLoop)
@@ -26,9 +27,10 @@
 
 #include "JoystickDriver.c"  //Include file to "handle" the Bluetooth messages.
 
-#define ARMSPEED 50
+#define ARMSPEED 2
 #define DRIVESPEED 100
 #define LIFTSPEED 100
+#define WRISTSPEED .1
 #define FORWARD 0		                   //move left motor cw, right motor ccw
 #define BACKWARD 4		                 //move left motor ccw, right motor cw
 #define	LEFT 6 	                       //move front motor ccw, back motor cw
@@ -103,8 +105,13 @@ void initializeRobot()
 	// Initialize the arm to a known position
 	nMotorEncoder[arm] = 0;
 
-	// Set distance outriggers have to extend to in endgame
-	nMotorEncoderTarget[outrigger] = 100;
+	// Initialize the outriggers to a known position
+	nMotorEncoder[outrigger] = 0;
+	// Set max distance outriggers can extend
+	nMotorEncoderTarget[outrigger] = 5000;
+	// Sync both outrigger motors
+	nSyncedMotors = synchAB;
+	nSyncedTurnRatio = 100;
 
 	// Disable joystick driver's diagnostics display to free up nxt screen for our own diagnostics diplay
 	disableDiagnosticsDisplay();
@@ -233,7 +240,7 @@ void handleDriveInputs(State *state, UserInput *input)
 	if (x == 0) x = 1; //to avoid division by 0
 		float angle = atan2(y, x); //find angle using tangent
 
-	if (abs(x) > 20 || abs(y) > 20) { //If robot isn't in deadzone...
+	if (abs(x) > 50 || abs(y) > 50) { //If robot isn't in deadzone...
 		//Value of angle, in radians and degrees
 		//  Notice that degrees don't correspond to radians.
 		//  This is because atan2(Y,X) returns angles in radians from -PI to PI
@@ -303,10 +310,10 @@ void handleWristInputs(State *state, UserInput *input)
 	else {
 		// Button 6 to raise wrist, button 8 to lower wrist (if wrist isn't being synced to arm)
 		if (joyButton(input->joy.joy1_Buttons, 6) && state->wristPosition < 220) {
-			++state->wristPosition;
+			state->wristPosition += WRISTSPEED;
 		}
 		else if (joyButton(input->joy.joy1_Buttons, 8) && state->wristPosition > 20) {
-			--state->wristPosition;
+			state->wristPosition -= WRISTSPEED;
 		}
 	}
 }
@@ -333,13 +340,12 @@ void handleTineInputs(State *state, UserInput *input) {
 
 void handleOutriggerInputs(State *state, UserInput *input) {
 	// If button 2 is clicked (ie. changed and pressed down), deploy outriggers
-	if (joyButton(input->joy1_Buttons_Changed, 2) && joyButton(input->joy.joy1_Buttons, 2))
+	if (joyButton(input->joy1_Buttons_Changed, 2) && joyButton(input->joy.joy1_Buttons, 2)) {
 		state->outriggerSpeed=100;
-
-	// Turn off outrigger motors once they're fully deployed
-	if (nMotorRunState[outrigger] == runStateIdle)
-		state->outriggerSpeed = 0;
-
+	}
+	if (nMotorEncoder[outrigger] > 5000){
+		state->outriggerSpeed=0;
+	}
 }
 
 void computeDriveMotorSpeeds(State *state)
@@ -457,7 +463,7 @@ void showDiagnostics(State *desiredState, State *actualState, UserInput *input)
 	string sLiftSpeed = "liftSpeed = ";
 	string sAutoMode = "autoMode = ";
 	string sArmPosition = "armPos = ";
-	string sWristPositionD = "dWristPos = ";
+	string sWristPositionD = "outrigger = ";//"dWristPos = ";
 	string sWristPositionA = "aWristPos = ";
 
 	//store variable in a string
@@ -467,7 +473,7 @@ void showDiagnostics(State *desiredState, State *actualState, UserInput *input)
 	string string4 = actualState->liftSpeed;
 	string string5 = (int)desiredState->autoMode;
 	string string6 = desiredState->armPosition;
-	string string7 = (int)desiredState->wristPosition;
+	string string7 = nMotorEncoder[outrigger];//(int)desiredState->wristPosition;
 	string string8 = (int)actualState->wristPosition;
 
 	//concat variable with label
