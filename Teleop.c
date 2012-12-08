@@ -10,8 +10,8 @@
 #pragma config(Motor,  mtr_S1_C3_1,     lift,          tmotorTetrix, openLoop)
 #pragma config(Motor,  mtr_S1_C3_2,     arm,           tmotorTetrix, PIDControl, encoder)
 #pragma config(Servo,  srvo_S1_C4_1,    wrist,                tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_2,    tineHook1,            tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_3,    tineHook2,            tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_2,    tineHook,             tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_3,    servo3,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_4,    servo4,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_5,    servo5,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_6,    servo6,               tServoNone)
@@ -27,7 +27,7 @@
 
 #include "JoystickDriver.c"  //Include file to "handle" the Bluetooth messages.
 
-#define ARMSPEED 2
+#define ARMSPEED 3
 #define DRIVESPEED 100
 #define LIFTSPEED 100
 #define WRISTSPEED .1
@@ -279,7 +279,10 @@ void handleDriveInputs(State *state, UserInput *input)
 void handleArmInputs(State *state, UserInput *input)
 {
 	// Button 5 to raise arm, button 7 to lower arm
-	if (joyButton(input->joy.joy1_Buttons, 5))	{
+	if (joyButton(input->joy1_Buttons_Changed, 5) && joyButton(input->joy.joy1_Buttons, 5)) {
+		state->armSpeed = ARMSPEED*4;
+	}
+	else	if (joyButton(input->joy.joy1_Buttons, 5))	{
 		state->armSpeed = ARMSPEED;
 	}
 	else if(joyButton(input->joy.joy1_Buttons, 7)) {
@@ -450,8 +453,7 @@ void updateAllMotors(State *state)
 	motor[lift] = state->liftSpeed;
 	motor[outrigger] = state->outriggerSpeed;
 	servo[wrist] = state->wristPosition;
-	servo[tineHook1] = state->tineLockPosition;
-	servo[tineHook2] = state->tineLockPosition;
+	servo[tineHook] = state->tineLockPosition;
 }
 
 void showDiagnostics(State *desiredState, State *actualState, UserInput *input)

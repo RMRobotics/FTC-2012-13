@@ -1,5 +1,6 @@
 #pragma config(Hubs,  S1, HTMotor,  HTMotor,  HTMotor,  HTServo)
-#pragma config(Sensor, S1,     ,               sensorI2CMuxController)
+#pragma config(Sensor, S2,     color,          sensorCOLORFULL)
+#pragma config(Sensor, S3,     touch,          sensorTouch)
 #pragma config(Motor,  motorA,          outrigger,     tmotorNXT, PIDControl, reversed, encoder)
 #pragma config(Motor,  motorB,          outrigger2,    tmotorNXT, PIDControl, reversed, encoder)
 #pragma config(Motor,  motorC,           ,             tmotorNXT, openLoop)
@@ -10,8 +11,8 @@
 #pragma config(Motor,  mtr_S1_C3_1,     lift,          tmotorTetrix, openLoop)
 #pragma config(Motor,  mtr_S1_C3_2,     arm,           tmotorTetrix, PIDControl, encoder)
 #pragma config(Servo,  srvo_S1_C4_1,    wrist,                tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_2,    tineHook1,            tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_3,    tineHook2,            tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_2,    tineHook,             tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_3,    servo3,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_4,    servo4,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_5,    servo5,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_6,    servo6,               tServoNone)
@@ -19,16 +20,15 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//                           Autonomous Mode Code Template
+//                           RM Robotics Autonomous Mode Code
 //
-// This file contains a template for simplified creation of an autonomous program for an TETRIX robot
-// competition.
-//
-// You need to customize two functions with code unique to your specific robot.
+// Program for autonomous portion of 2012-2013 FTC game: Ring It Up
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define ARMSPEED 2
+#include "JoystickDriver.c"  //Include file to "handle" the Bluetooth messages.
+
+#define ARMSPEED 3
 #define DRIVESPEED 100
 #define LIFTSPEED 100
 #define WRISTSPEED .1
@@ -43,14 +43,7 @@
 #define	SPINLEFT 8                     //spin left	move all motors ccw
 #define	SPINRIGHT 9                    //spin right move all motors cw
 
-#include "JoystickDriver.c"  //Include file to "handle" the Bluetooth messages.
-
 typedef struct {
-	// Keep track what buttons were previously pressed so that
-	// we can figure out whether their state changed.
-	short old_joy1_Buttons;
-	short old_joy2_Buttons;
-
 	// The desired direction is the directory that the user intends the robot
 	// to move based on joystick input.
 	int desiredDriveDirection;
@@ -75,21 +68,13 @@ typedef struct {
 	int outriggerSpeed;
 } State;
 
+void command (State *state, int dir, int driveSpeed, int armSpeed, int wristPos, int liftSpeed, int time);
 void computeDriveMotorSpeeds(State *state);
 void updateAllMotors(State *state);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //                                    initializeRobot
-//
-// Prior to the start of autonomous mode, you may want to perform some initialization on your robot.
-// Things that might be performed during initialization include:
-//   1. Move motors and servos to a preset position.
-//   2. Some sensor types take a short while to reach stable values during which time it is best that
-//      robot is not moving. For example, gyro sensor needs a few seconds to obtain the background
-//      "bias" value.
-//
-// In many cases, you may not have to add any code to this function and it will remain "empty".
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -108,29 +93,15 @@ void initializeRobot()
 	// Sync both outrigger motors
 	nSyncedMotors = synchAB;
 	nSyncedTurnRatio = 100;
-
-	// Disable joystick driver's diagnostics display to free up nxt screen for our own diagnostics diplay
-	disableDiagnosticsDisplay();
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //                                         Main Task
 //
-// The following is the main code for the autonomous robot operation. Customize as appropriate for
-// your specific robot.
-//
-// The types of things you might do during the autonomous phase (for the 2008-9 FTC competition)
-// are:
-//
-//   1. Have the robot follow a line on the game field until it reaches one of the puck storage
-//      areas.
-//   2. Load pucks into the robot from the storage bin.
-//   3. Stop the robot and wait for autonomous phase to end.
-//
-// This simple template does nothing except play a periodic tone every few seconds.
-//
-// At the end of the autonomous period, the FMS will autonmatically abort (stop) execution of the program.
+// 1. Go forward until robot sees one of the white lines in front of the pegs
+// 2. Follow that line until the robot is right in front of the chosen column of pegs
+// 3. Deposit pre-loaded ring onto the bottom peg of that column
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -143,16 +114,50 @@ task main()
 	// Initialize everything in the desired state to 0.
 	memset(&desiredState, 0, sizeof(desiredState));
 	desiredState.wristPosition = 100;
-	desiredState.desiredDriveSpeed = DRIVESPEED;
 
-	//waitForStart();   // wait for start of tele-op phase
+	//waitForStart();   // wait for start of autonomous phase
 
-	while (true)
-	{
-		computeDriveMotorSpeeds(&desiredState);
+	//command format:
+	//command (State *state, int dir, int driveSpeed, int armSpeed, int wristPos, int liftSpeed, int time);
 
-		updateAllMotors(&desiredState);
+	//raise lift and release arm
+	command(&desiredState, -1, 0, 0, desiredState.wristPosition + 50, 100, 500);
+
+	//move forward until robot sees white line in front of pegs
+	while(SensorValue[color] != WHITECOLOR) {
+		command(&desiredState, FORWARD, 50, 0, desiredState.wristPosition, 0, 0);
 	}
+
+	//follow white line until robot hits the pegs
+	while(SensorValue[touch] == 0) {
+		if (SensorValue[color] == WHITECOLOR) {
+			command(&desiredState, LEFT, 25, 0, desiredState.wristPosition, 0, 0);
+		}
+		else if (SensorValue[color] == BLACKCOLOR) {
+			command(&desiredState, FORWARD, 25, 0, desiredState.wristPosition, 0, 0);
+		}
+	}
+
+	// TODO:
+	// activate mechanism that will release pre-loaded ring
+}
+
+void command (State *state, int dir, int driveSpeed, int armSpeed, int wristPos, int liftSpeed, int time) {
+	state->desiredDriveDirection = dir;
+	state->desiredDriveSpeed = driveSpeed;
+	state->armSpeed = armSpeed;
+	state->wristPosition = wristPos;
+	state->liftSpeed = liftSpeed;
+
+	computeDriveMotorSpeeds(state);
+	updateAllMotors(state);
+
+	wait1Msec(time);
+
+	state->desiredDriveDirection = -1;
+	state->desiredDriveSpeed = 0;
+	state->armSpeed = 0;
+	state->liftSpeed = 0;
 }
 
 void computeDriveMotorSpeeds(State *state)
@@ -240,6 +245,5 @@ void updateAllMotors(State *state)
 	motor[lift] = state->liftSpeed;
 	motor[outrigger] = state->outriggerSpeed;
 	servo[wrist] = state->wristPosition;
-	servo[tineHook1] = state->tineLockPosition;
-	servo[tineHook2] = state->tineLockPosition;
+	servo[tineHook] = state->tineLockPosition;
 }
