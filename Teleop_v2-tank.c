@@ -44,7 +44,7 @@ typedef struct {
 	int rightTreadSpeed;
 
 	// Keep track of wrist servos' positions
-	float wristHorizPos; // (0 - 243
+	float wristHorizPos; // (0 - 243)
 	float wristVert1Pos; // (0 - 247)
 	float wristVert2Pos; // (0 - 227)
 
@@ -53,6 +53,7 @@ typedef struct {
 void getLatestInput(State *state, UserInput *input);
 void handleDriveInputs(State *state, UserInput *input);
 void handleWristInputs(State *state, UserInput *input);
+void verifyCommands(State *state);
 void updateAllMotors(State *state);
 void showDiagnostics(State *state);
 
@@ -110,14 +111,18 @@ void initializeRobot()
 //     B/3:........................Hand right
 //     X/1:........................Hand down
 //     Y/4:........................Hand up
+//     D-pad (Top hat)
+//       Up:.........................Increase hand angle relative to the ground
+//       Down:.......................Decrease hand angle relative to the ground
 //
 // NOTE: ASCII Art adapted from: http://chris.com/ascii/index.php?art=video%20games/other
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 
 task main()
 {
-  initializeRobot();
+	initializeRobot();
 
+	// Initialize state values
   State currentState;
   memset(&currentState, 0, sizeof(currentState));
   currentState.wristVert2Pos = 227;
@@ -133,6 +138,9 @@ task main()
   	// Process user inputs
   	handleDriveInputs(&currentState, &input);
   	handleWristInputs(&currentState, &input);
+
+  	// Verify validity/possibility of commands
+  	verifyCommands(&currentState);
 
   	// Execute user inputs
   	updateAllMotors(&currentState);
@@ -165,12 +173,14 @@ int joyButton(short bitmask, int button)
 
 void handleDriveInputs(State *state, UserInput *input)
 {
+	// If left joystick is outside dead zone, move left tread, otherwise stop.
 	if (abs(input->joy.joy1_y1) > 20) {
 		state->leftTreadSpeed = input->joy.joy1_y1 * (100.0 / 128.0) + 0.5;
 	} else {
 		state->leftTreadSpeed = 0;
 	}
 
+	// If right joystick is outside dead zone, move right tread, otherwise stop.
 	if (abs(input->joy.joy1_y2) > 20) {
 		state->rightTreadSpeed = input->joy.joy1_y2 * (100.0 / 128.0) + 0.5;
 	} else {
@@ -180,20 +190,50 @@ void handleDriveInputs(State *state, UserInput *input)
 
 void handleWristInputs(State *state, UserInput *input)
 {
-	if (joyButton(input->joy.joy2_Buttons, 3) && state->wristHorizPos <= 243) {
+	// Controls for horizontal servo
+	if (joyButton(input->joy.joy2_Buttons, 3)) {
 		state->wristHorizPos += WRISTSPEED;
-	} else if (joyButton(input->joy.joy2_Buttons, 2) && state->wristHorizPos >= 0) {
+	} else if (joyButton(input->joy.joy2_Buttons, 2)) {
 		state->wristHorizPos -= WRISTSPEED;
 	}
 
-	if (joyButton(input->joy.joy2_Buttons, 4) && state->wristVert1Pos <= 247
-			&& state->wristVert2Pos >= 0) {
+	// Controls for synchronized movement of vertical servos
+	//   (keeps the angle of the hand relative to the ground constant)
+	if (joyButton(input->joy.joy2_Buttons, 4)) {
 		state->wristVert1Pos += WRISTSPEED;
 		state->wristVert2Pos -= WRISTSPEED;
-	} else if (joyButton(input->joy.joy2_Buttons, 1) && state->wristVert1Pos >= 0
-			&& state->wristVert2Pos <= 227) {
+	} else if (joyButton(input->joy.joy2_Buttons, 1)) {
 		state->wristVert1Pos -= WRISTSPEED;
 		state->wristVert2Pos += WRISTSPEED;
+	}
+
+	// Controls for individual movement of 2nd vertical servo
+	//   (allows the angle of the hand relative to the ground to be changed)
+	if (input->joy.joy2_TopHat == 0) {
+		state->wristVert2Pos += WRISTSPEED;
+	} else if (input ->joy.joy2_TopHat == 4) {
+		state->wristVert2Pos -= WRISTSPEED;
+	}
+}
+
+void verifyCommands(State *state)
+{
+	// If the projected servo values aren't within the servos' ranges,
+	// stay at the servos' current positions.
+
+	// Servo Ranges
+	// Horiz Servo: 0 - 243
+	// 1st Vert Servo: 0 - 247
+	// 2nd Vert Servo: 0 - 227
+
+	if (state->wristHorizPos > 243 || state->wristHorizPos < 0) {
+		state->wristHorizPos = ServoValue[wristHoriz];
+	}
+
+	if (state->wristVert1Pos > 247 || state->wristVert2Pos < 0
+	 || state->wristVert2Pos > 227 || state->wristVert2Pos < 0) {
+		state->wristVert1Pos = ServoValue[wristVert1];
+		state->wristVert2Pos = ServoValue[wristVert2];
 	}
 }
 
