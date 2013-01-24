@@ -2,9 +2,9 @@
 #pragma config(Sensor, S1,     ,               sensorI2CMuxController)
 #pragma config(Motor,  mtr_S1_C1_1,     leftTread,     tmotorTetrix, openLoop, reversed)
 #pragma config(Motor,  mtr_S1_C1_2,     rightTread,    tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C2_1,     lift,          tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C2_2,     lift,          tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C3_1,     motorH,        tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C2_1,     lift,          tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C2_2,     lift2,         tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C3_1,     lift3,         tmotorTetrix, openLoop, reversed)
 #pragma config(Motor,  mtr_S1_C3_2,     motorI,        tmotorTetrix, openLoop)
 #pragma config(Servo,  srvo_S1_C4_1,    wristHoriz,           tServoStandard)
 #pragma config(Servo,  srvo_S1_C4_2,    wristVert1,           tServoStandard)
@@ -48,10 +48,14 @@ typedef struct {
 	float wristVert1Pos; // (0 - 247)
 	float wristVert2Pos; // (0 - 227)
 
+	// Keep track of lift speed
+	int liftSpeed;
+
 } State;
 
 void getLatestInput(State *state, UserInput *input);
 void handleDriveInputs(State *state, UserInput *input);
+void handleLiftInputs(State *state, UserInput *input);
 void handleWristInputs(State *state, UserInput *input);
 void verifyCommands(State *state);
 void updateAllMotors(State *state);
@@ -137,6 +141,7 @@ task main()
 
   	// Process user inputs
   	handleDriveInputs(&currentState, &input);
+  	handleLiftInputs(&currentState, &input);
   	handleWristInputs(&currentState, &input);
 
   	// Verify validity/possibility of commands
@@ -185,6 +190,17 @@ void handleDriveInputs(State *state, UserInput *input)
 		state->rightTreadSpeed = input->joy.joy1_y2 * (100.0 / 128.0) + 0.5;
 	} else {
 		state->rightTreadSpeed = 0;
+	}
+}
+
+void handleLiftInputs(State *state, UserInput *input)
+{
+	if (joyButton(input->joy.joy2_Buttons, 6)) {
+		state->liftSpeed = 100;
+	} else if (joyButton(input->joy.joy2_Buttons, 8)) {
+		state->liftSpeed = -100;
+	} else {
+		state->liftSpeed = 0;
 	}
 }
 
@@ -241,6 +257,9 @@ void updateAllMotors(State *state)
 {
 	motor[leftTread] = state->leftTreadSpeed;
 	motor[rightTread] = state->rightTreadSpeed;
+	motor[lift] = state->liftSpeed;
+	motor[lift2] = state->liftSpeed;
+	motor[lift3] = state->liftSpeed;
 	servo[wristHoriz] = state->wristHorizPos;
 	servo[wristVert1] = state->wristVert1Pos;
 	servo[wristVert2] = state->wristVert2Pos;

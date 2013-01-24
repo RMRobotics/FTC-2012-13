@@ -2,9 +2,9 @@
 #pragma config(Sensor, S1,     ,               sensorI2CMuxController)
 #pragma config(Motor,  mtr_S1_C1_1,     leftTread,     tmotorTetrix, openLoop, reversed)
 #pragma config(Motor,  mtr_S1_C1_2,     rightTread,    tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C2_1,     lift,          tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C2_2,     lift,          tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C3_1,     motorH,        tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C2_1,     lift,          tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C2_2,     lift2,         tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C3_1,     lift3,         tmotorTetrix, openLoop, reversed)
 #pragma config(Motor,  mtr_S1_C3_2,     motorI,        tmotorTetrix, openLoop)
 #pragma config(Servo,  srvo_S1_C4_1,    wristHoriz,           tServoStandard)
 #pragma config(Servo,  srvo_S1_C4_2,    wristVert1,           tServoStandard)
@@ -19,9 +19,17 @@ task main()
 	while (true)
 	{
 		if(nNxtButtonPressed == 2) { // If grey left arrow on NXT is pressed, lower lift.
-			motor[lift] = -50;
+			motor[lift] = -100;
+			motor[lift2] = -100;
+			motor[lift3] = -100;
 		} else if (nNxtButtonPressed == 1) { // If grey right arrow on NXT is pressed, raise lift.
-			motor[lift] = 50;
+			motor[lift] = 100;
+			motor[lift2] = 100;
+			motor[lift3] = 100;
+		} else {
+			motor[lift] = 0;
+			motor[lift2] = 0;
+			motor[lift3] = 0;
 		}
 	}
 }
