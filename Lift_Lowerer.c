@@ -19,13 +19,13 @@ task main()
 	while (true)
 	{
 		if(nNxtButtonPressed == 2) { // If grey left arrow on NXT is pressed, lower lift.
-			motor[lift] = -100;
-			motor[lift2] = -100;
+			motor[lift] = -10;
+			motor[lift2] = -10;
 			motor[lift3] = -100;
 		} else if (nNxtButtonPressed == 1) { // If grey right arrow on NXT is pressed, raise lift.
 			motor[lift] = 100;
 			motor[lift2] = 100;
-			motor[lift3] = 100;
+			motor[lift3] = 10;
 		} else {
 			motor[lift] = 0;
 			motor[lift2] = 0;

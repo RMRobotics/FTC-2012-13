@@ -50,6 +50,7 @@ typedef struct {
 
 	// Keep track of lift speed
 	int liftSpeed;
+	int returnSpeed;
 
 } State;
 
@@ -197,10 +198,13 @@ void handleLiftInputs(State *state, UserInput *input)
 {
 	if (joyButton(input->joy.joy2_Buttons, 6)) {
 		state->liftSpeed = 100;
+		state->returnSpeed = 10;
 	} else if (joyButton(input->joy.joy2_Buttons, 8)) {
-		state->liftSpeed = -100;
+		state->liftSpeed = -10;
+		state->returnSpeed = -100;
 	} else {
 		state->liftSpeed = 0;
+		state->returnSpeed = 0;
 	}
 }
 
@@ -259,7 +263,7 @@ void updateAllMotors(State *state)
 	motor[rightTread] = state->rightTreadSpeed;
 	motor[lift] = state->liftSpeed;
 	motor[lift2] = state->liftSpeed;
-	motor[lift3] = state->liftSpeed;
+	motor[lift3] = state->returnSpeed;
 	servo[wristHoriz] = state->wristHorizPos;
 	servo[wristVert1] = state->wristVert1Pos;
 	servo[wristVert2] = state->wristVert2Pos;
