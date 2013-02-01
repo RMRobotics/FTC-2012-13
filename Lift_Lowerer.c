@@ -25,7 +25,7 @@ task main()
 		} else if (nNxtButtonPressed == 1) { // If grey right arrow on NXT is pressed, raise lift.
 			motor[lift] = 100;
 			motor[lift2] = 100;
-			motor[lift3] = 10;
+			motor[lift3] = 50;
 		} else {
 			motor[lift] = 0;
 			motor[lift2] = 0;
