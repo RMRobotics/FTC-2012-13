@@ -1,14 +1,14 @@
 #pragma config(Hubs,  S1, HTMotor,  HTMotor,  HTMotor,  HTServo)
 #pragma config(Sensor, S1,     ,               sensorI2CMuxController)
-#pragma config(Motor,  mtr_S1_C1_1,     leftTread,     tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C1_2,     rightTread,    tmotorTetrix, openLoop, reversed)
-#pragma config(Motor,  mtr_S1_C2_1,     lift,          tmotorTetrix, openLoop, reversed)
-#pragma config(Motor,  mtr_S1_C2_2,     lift2,         tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C3_1,     lift3,         tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C1_1,     rightTread,     tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C1_2,     leftTread,    tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C2_1,     lift,          tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C2_2,     lift2,         tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C3_1,     motorH,             tmotorTetrix, openLoop)
 #pragma config(Motor,  mtr_S1_C3_2,     motorI,        tmotorTetrix, openLoop)
-#pragma config(Servo,  srvo_S1_C4_1,    horiz,           tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_2,    vert1,           tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_3,    vert2,           tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_1,    horiz,                tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_2,    vert1,                tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_3,    vert2,                tServoStandard)
 #pragma config(Servo,  srvo_S1_C4_4,    servo4,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_5,    servo5,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_6,    servo6,               tServoNone)
@@ -50,13 +50,13 @@ typedef struct {
 
 	// Keep track of lift speed
 	int liftSpeed;
-	int returnSpeed;
 
 } State;
 
 void getLatestInput(State *state, UserInput *input);
 void handleDriveInputs(State *state, UserInput *input);
 void handleLiftInputs(State *state, UserInput *input);
+void handleSpecialButtons(State *state, UserInput *input);
 void handleWristInputs(State *state, UserInput *input);
 void verifyCommands(State *state);
 void updateAllMotors(State *state);
@@ -71,8 +71,8 @@ void showDiagnostics(State *state);
 void initializeRobot()
 {
   servo[horiz] = 0;
-  servo[vert1] = 225;
   servo[vert2] = 220;
+  servo[vert1] = 225;
 
   // Disable joystick driver's diagnostics display to free up nxt screen for our own diagnostics diplay
 	disableDiagnosticsDisplay();
@@ -130,10 +130,10 @@ task main()
 	// Initialize state values
   State currentState;
   memset(&currentState, 0, sizeof(currentState));
-  currentState.vert1Pos = 225;
   currentState.vert2Pos = 220;
+  currentState.vert1Pos = 225;
 
-  //waitForStart();   // wait for start of tele-op phase
+  wait1Msec(1000);  //waitForStart();   // wait for start of tele-op phase
 
   while (true)
   {
@@ -144,6 +144,7 @@ task main()
   	// Process user inputs
   	handleDriveInputs(&currentState, &input);
   	handleLiftInputs(&currentState, &input);
+  	handleSpecialButtons(&currentState, &input);
   	handleWristInputs(&currentState, &input);
 
   	// Verify validity/possibility of commands
@@ -204,20 +205,32 @@ void handleDriveInputs(State *state, UserInput *input)
 		state->rightTreadSpeed = 0;
 	}
 
-
-	}
+}
 
 void handleLiftInputs(State *state, UserInput *input)
 {
 	if (joyButton(input->joy.joy2_Buttons, 6)) {
 		state->liftSpeed = 100;
-		state->returnSpeed = 10;
 	} else if (joyButton(input->joy.joy2_Buttons, 8)) {
-		state->liftSpeed = -10;
-		state->returnSpeed = -100;
+		state->liftSpeed = -30;
 	} else {
 		state->liftSpeed = 0;
-		state->returnSpeed = 0;
+	}
+}
+
+void handleSpecialButtons(State *state, UserInput *input) {
+	if (joyButton(input->joy.joy1_Buttons, 2)) {
+		state->liftSpeed = 100;
+		for (int i = 0; i < 2000; i++) {
+			getLatestInput(state, input);
+			if (joyButton(input->joy.joy1_Buttons, 4)) {
+				break;
+			}
+			updateAllMotors(state);
+			wait1Msec(1);
+		}
+		state->liftSpeed = 0;
+		updateAllMotors(state);
 	}
 }
 
@@ -233,11 +246,11 @@ void handleWristInputs(State *state, UserInput *input)
 	// Controls for synchronized movement of vertical servos
 	//   (keeps the angle of the hand relative to the ground constant)
 	if (joyButton(input->joy.joy2_Buttons, 4)) {
-		state->vert1Pos += WRISTSPEED;
-		state->vert2Pos += WRISTSPEED;
-	} else if (joyButton(input->joy.joy2_Buttons, 2)) {
 		state->vert1Pos -= WRISTSPEED;
 		state->vert2Pos -= WRISTSPEED;
+	} else if (joyButton(input->joy.joy2_Buttons, 2)) {
+		state->vert1Pos += WRISTSPEED;
+		state->vert2Pos += WRISTSPEED;
 	}
 
 	// Controls for individual movement of 2nd vertical servo
@@ -249,10 +262,12 @@ void handleWristInputs(State *state, UserInput *input)
 	}
 }
 
+
+
 void verifyCommands(State *state)
 {
 	// If the projected servo values aren't within the servos' ranges,
-	// stay at the servos' current positions.bFloatDuringInactiveMotorPWM = true;
+	// stay at the servos' current positions.
 
 	// Servo Ranges
 	// Horiz Servo: 0 - 255
@@ -276,7 +291,6 @@ void updateAllMotors(State *state)
 	motor[rightTread] = state->rightTreadSpeed;
 	motor[lift] = state->liftSpeed;
 	motor[lift2] = state->liftSpeed;
-	motor[lift3] = state->returnSpeed;
 	servo[horiz] = state->horizPos;
 	servo[vert1] = state->vert1Pos;
 	servo[vert2] = state->vert2Pos;
@@ -289,7 +303,6 @@ void showDiagnostics(State *state)
 	string sWristVert1Pos = "vert1 = ";
 	string sWristVert2Pos = "vert2 = ";
 	string batteryLevel = "power = ";
-
 
 	//store variable in a string
 	string string1 = state->horizPos;
