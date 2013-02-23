@@ -1,16 +1,17 @@
-
 #pragma config(Hubs,  S1, HTMotor,  HTMotor,  HTMotor,  HTServo)
 #pragma config(Sensor, S1,     ,               sensorI2CMuxController)
-#pragma config(Sensor, S2,     HTGYRO,              sensorAnalogInactive)
-#pragma config(Motor,  mtr_S1_C1_1,     leftTread,     tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C1_2,     rightTread,    tmotorTetrix, openLoop, reversed)
-#pragma config(Motor,  mtr_S1_C2_1,     lift,          tmotorTetrix, openLoop, reversed)
-#pragma config(Motor,  mtr_S1_C2_2,     lift2,         tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C3_1,     lift3,         tmotorTetrix, openLoop, reversed)
-#pragma config(Motor,  mtr_S1_C3_2,     motorI,        tmotorTetrix, openLoop)
-#pragma config(Servo,  srvo_S1_C4_1,    horiz,           tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_2,    vert1,           tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_3,    vert2,           tServoStandard)
+#pragma config(Sensor, S2,     HTGYRO,         sensorAnalogInactive)
+#pragma config(Sensor, S3,     HTColor,        sensorI2CCustom)
+#pragma config(Sensor, S4,     sonar,          sensorSONAR)
+#pragma config(Motor,  mtr_S1_C1_1,     rightTread,    tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C1_2,     leftTread,     tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C2_1,     frontBottomLift, tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C2_2,     backBottomLift, tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C3_1,     frontTopLift,  tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C3_2,     backTopLift,   tmotorTetrix, openLoop, reversed)
+#pragma config(Servo,  srvo_S1_C4_1,    servo1,               tServoNone)
+#pragma config(Servo,  srvo_S1_C4_2,    vert1,                tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_3,    vert2,                tServoStandard)
 #pragma config(Servo,  srvo_S1_C4_4,    servo4,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_5,    servo5,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_6,    servo6,               tServoNone)
@@ -25,12 +26,18 @@
 
 #include "JoystickDriver.c"  //Include file to "handle" the Bluetooth messages.
 #include "hitechnic-gyro.h"
+#include "hitechnic-colour-v2.h"
 
+#define WHITE 17
+#define BLACK 0
+#define RED 1
+#define BLU 2
+#define LOPEG 23
+#define MIDPEG 42
+#define HIPEG 80
+#define LEFT 1
+#define RIGHT -1
 #define WRISTSPEED .3
-
-//AUTONOMOUS VALUES
-#define PAUSE_ONE 250
-
 
 typedef struct {
 	// Keep track of left and right tread speeds
@@ -38,13 +45,11 @@ typedef struct {
 	int rightTreadSpeed;
 
 	// Keep track of wrist servos' positions
-	float horizPos; // (0 - 243)
 	float vert1Pos; // (0 - 247)
 	float vert2Pos; // (0 - 227)
 
 	// Keep track of lift speed
 	int liftSpeed;
-	int returnSpeed;
 
 } State;
 
@@ -52,13 +57,15 @@ typedef struct {
 void updateAllMotors(State *state);
 void showDiagnostics(State *state);
 
+void FwdToNthLine(State state, int n);
+void turnAndAlignToLine(State state, int dir);
 void Fwd(State state, int length);
 void Bwd(State state, int length);
 void ResetTreads(State state, int length);
 void leftTurn(State state, int angle);
 void rightTurn(State state, int angle);
-void raiseLift(State state, int length);
-void lowerLift(State state, int length);
+void raiseLift(State state, int length, int time);
+void lowerLift(State state, int length, int time);
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -68,7 +75,6 @@ void lowerLift(State state, int length);
 
 void initializeRobot()
 {
-  servo[horiz] = 0;
   servo[vert1] = 225;
   servo[vert2] = 220;
 
@@ -78,52 +84,223 @@ void initializeRobot()
   return;
 }
 
+int allianceChooser() {
+	int alliance = 1;
+	eraseDisplay();
+
+	int prevSetting = -1;
+	int setting = -1;
+	do {
+		setting = nNxtButtonPressed;
+		if(setting == 1 && setting != prevSetting) {
+			if(alliance < 2) {
+				alliance++;
+			} else {
+				alliance = 1;
+			}
+		} else if(setting == 2 && setting != prevSetting) {
+			if(alliance > 1) {
+				alliance--;
+			} else {
+				alliance = 2;
+			}
+		}
+		prevSetting = setting;
+
+		switch (alliance) {
+			case 1: nxtDisplayTextLine(3, "RED"); break;
+			case 2: nxtDisplayTextLine(3, "BLU"); break;
+		}
+	} while(nNxtButtonPressed != 3);
+
+	return alliance;
+}
+
+int routineChooser() {
+	int routine = 1;
+	eraseDisplay();
+
+	int prevSetting = -1;
+	int setting = -1;
+	do {
+		setting = nNxtButtonPressed;
+		if(setting == 1 && setting != prevSetting) {
+			if(routine < 5) {
+				routine++;
+			} else {
+				routine = 1;
+			}
+		} else if(setting == 2 && setting != prevSetting) {
+			if(routine > 1) {
+				routine--;
+			} else {
+				routine = 5;
+			}
+		}
+		prevSetting = setting;
+
+		switch (routine) {
+			case 1: nxtDisplayTextLine(3, "FRNT EDG LO"); break;
+			case 2: nxtDisplayTextLine(3, "FRNT EDG MID"); break;
+			case 3: nxtDisplayTextLine(3, "FRNT EDG HI"); break;
+			case 4: nxtDisplayTextLine(3, "BACK CTR HI a LF"); break;
+			case 5: nxtDisplayTextLine(3, "BACK CTR HI a RT"); break;
+		}
+	} while(nNxtButtonPressed != 3);
+
+	nxtDisplayTextLine(3, "Autonomous Ready");
+
+	return routine;
+}
+
 task main()
 {
   initializeRobot();
+  int alliance = allianceChooser();
+  int routine = routineChooser();
 
   // Initialize state values
   State currentState;
   memset(&currentState, 0, sizeof(currentState));
-  currentState.vert2Pos = 220;
   currentState.vert1Pos = 225;
-
-
+  currentState.vert2Pos = 220;
 
   /*
   wait1Msec(milliseconds)
 	leftTreadSpeed (-100 -> 100)
 	rightTreadSpeed (-100 -> 100)
 
-  horizPos (0-243)
   vert1Pos (0-247)
   vert2Pos (0-227)
 
-  up: liftSpeed (100) returnSpeed (10)
-  dn: liftSpeed (10)  returnSpeed (100)
-*/
+  up: liftSpeed (100)
+  dn: liftSpeed (-30)
+	*/
 
-  //!START FROM WALL
-
-  //waitForStart();   // wait for start of autonomous phase
+  waitForStart();   // wait for start of autonomous phase
 
 	HTGYROstartCal(HTGYRO);
 
-  Fwd(currentState, 1000);
-  Bwd(currentState, 1000);
-  leftTurn(currentState, 90);
-  rightTurn(currentState, 90);
-  raiseLift(currentState, 750);
-  lowerLift(currentState, 600);
-
-
+  if(routine == 1) { // front edge bottom peg
+  	currentState.vert1Pos = 86;
+  	currentState.vert2Pos = 81;
+  	Fwd(currentState, 3000);
+  	ResetTreads(currentState, 750);
+  	currentState.vert1Pos = 225;
+  	currentState.vert2Pos = 220;
+  	Bwd(currentState, 1000);
+  	if (alliance == RED)
+  		rightTurn(currentState, 135);
+  	else
+  		leftTurn(currentState, 135);
+  }
+  else if(routine == 2) { // front edge middle peg
+  	currentState.vert1Pos = 86;
+  	currentState.vert2Pos = 81;
+  	Fwd(currentState, 2500);
+  	raiseLift(currentState, MIDPEG, 1700);
+  	Fwd(currentState, 500);
+  	ResetTreads(currentState, 750);
+  	lowerLift(currentState, (LOPEG + MIDPEG)/2, 300);
+  	Bwd(currentState, 1000);
+  	lowerLift(currentState, LOPEG, 1400);
+  	if (alliance == RED)
+  		rightTurn(currentState, 135);
+  	else
+  		leftTurn(currentState, 135);
+ 	}
+ 	else if(routine == 3) { // front edge top peg
+ 		currentState.vert1Pos = 86;
+  	currentState.vert2Pos = 81;
+  	Fwd(currentState, 2500);
+ 		raiseLift(currentState, HIPEG, 3300);
+  	Fwd(currentState, 500);
+  	ResetTreads(currentState, 750);
+  	lowerLift(currentState, (MIDPEG + HIPEG)/2, 300);
+  	Bwd(currentState, 1000);
+  	lowerLift(currentState, LOPEG, 3000);
+  	if (alliance == RED)
+  		rightTurn(currentState, 135);
+  	else
+  		leftTurn(currentState, 135);
+  }
+  else if(routine == 4) { // go for enemy center from the left (if this works I will eat my socks)
+  	Fwd(currentState, 3000);
+  	leftTurn(currentState, 45);
+  	Fwd(currentState, 1500);
+  	leftTurn(currentState, 90);
+  	raiseLift(currentState, HIPEG, 3300);
+  	Fwd(currentState, 500);
+  	lowerLift(currentState, (MIDPEG + HIPEG)/2, 300);
+  	Bwd(currentState, 500);
+  	lowerLift(currentState, LOPEG, 3000);
+  	if (alliance == RED)
+  		rightTurn(currentState, 135);
+  	else
+  		leftTurn(currentState, 135);
+  }
+  else if(routine == 5) { // go for enemy center from the right (if this works Jimmy will eat his socks)
+  	Fwd(currentState, 3000);
+  	rightTurn(currentState, 45);
+  	Fwd(currentState, 1500);
+  	rightTurn(currentState, 90);
+  	raiseLift(currentState, HIPEG, 3300);
+  	Fwd(currentState, 500);
+  	lowerLift(currentState, (MIDPEG + HIPEG)/2, 300);
+  	Bwd(currentState, 500);
+  	lowerLift(currentState, LOPEG, 3000);
+  	if (alliance == RED)
+  		rightTurn(currentState, 135);
+  	else
+  		leftTurn(currentState, 135);
+}
   //reset
   memset(&currentState, 0, sizeof(currentState));
-  currentState.vert2Pos = 220;
-  currentState.vert1Pos = 225;
+  currentState.vert1Pos = 86;
+  currentState.vert2Pos = 81;
   updateAllMotors(&currentState);
 }
 
+int getHeight() {
+	return SensorValue[sonar] * (SensorValue[sonar] != 255);
+}
+
+void FwdToNthLine(State state, int n){
+	//  move until nth line
+	int newColor;
+	int oldColor;
+	ClearTimer(T1);
+	int t = time1(T1);
+
+	state.rightTreadSpeed = 100;
+  state.leftTreadSpeed = 100;
+  updateAllMotors(state);
+	newColor = HTCS2readColor(HTColor);
+	for (int i = 0; i < n; i++) {
+		do {
+			if(t > 6000)
+				break;
+			oldColor = newColor;
+			newColor = HTCS2readColor(HTColor);
+		} while (!(newColor != oldColor && newColor == WHITE));
+	}
+	ResetTreads(state, 250);
+}
+
+void turnAndAlignToLine(State state, int dir) {
+	Fwd(state, 200);
+	state.rightTreadSpeed = -50*dir;
+  state.leftTreadSpeed = 50*dir;
+  updateAllMotors(state);
+  do {
+  	// turn
+	} while (HTCS2readColor(HTColor) != WHITE);
+	ResetTreads(state, 250);
+
+	rightTurn(state, 90);
+	Bwd(state, 200);
+	leftTurn(state, 90);
+}
 
 void Fwd(State state, int length)
 {
@@ -132,8 +309,9 @@ void Fwd(State state, int length)
 	updateAllMotors(&state);
 	showDiagnostics(&state);
 	wait1Msec(length);
-	ResetTreads(state, PAUSE_ONE);
+	ResetTreads(state, 250);
 }
+
 void Bwd(State state, int length)
 {
 	state.leftTreadSpeed = -100;
@@ -141,18 +319,19 @@ void Bwd(State state, int length)
 	updateAllMotors(&state);
 	showDiagnostics(&state);
 	wait1Msec(length);
-	ResetTreads(state, PAUSE_ONE);
+	ResetTreads(state, 250);
 }
+
 void ResetTreads(State state, int length)
 {
 	state.leftTreadSpeed = 0;
 	state.rightTreadSpeed = 0;
 	state.liftSpeed = 0;
-	state.returnSpeed = 0;
 	updateAllMotors(&state);
 	showDiagnostics(&state);
 	wait1Msec(length);
 }
+
 void leftTurn(State state, int angle)
 {
 	float heading = 0;
@@ -177,8 +356,9 @@ void leftTurn(State state, int angle)
 		}
 		heading += rotSpeed * 0.02;
 	}
-	ResetTreads(state, PAUSE_ONE);
+	ResetTreads(state, 250);
 }
+
 void rightTurn(State state, int angle)
 {
 	float heading = 0;
@@ -203,36 +383,46 @@ void rightTurn(State state, int angle)
 		}
 		heading += rotSpeed * 0.02;
 	}
-	ResetTreads(state, PAUSE_ONE);
+	ResetTreads(state, 250);
 }
-void raiseLift(State state, int length)
+
+void raiseLift(State state, int length, int time)
 {
 	state.liftSpeed = 100;
-	state.returnSpeed = 10;
 	updateAllMotors(&state);
-	wait1Msec(length);
-	ResetTreads(state, PAUSE_ONE);
+	ClearTimer(T1);
+	//while (getHeight() < length && time1[T1] < time) {
+	while (time1[T1]< time) {
+		if (getHeight() != 0)
+			if (getHeight() > length)
+				break;
+	}
+	ResetTreads(state, 250);
 }
-void lowerLift(State state, int length)
+
+void lowerLift(State state, int length, int time)
 {
-	state.liftSpeed = 10;
-	state.returnSpeed = 100;
+	state.liftSpeed = -15;
 	updateAllMotors(&state);
-	wait1Msec(length);
-	ResetTreads(state, PAUSE_ONE);
+	ClearTimer(T1);
+	//while (getHeight() > length && time1[T1] < time) {
+	while (time1[T1]< time) {
+		// wait
+		if (getHeight() != 0)
+			if (getHeight() < length)
+				break;
+	}
+	ResetTreads(state, 250);
 }
-
-
-
 
 void updateAllMotors(State *state)
 {
 	motor[leftTread] = state->leftTreadSpeed;
 	motor[rightTread] = state->rightTreadSpeed;
-	motor[lift] = state->liftSpeed;
-	motor[lift2] = state->liftSpeed;
-	motor[lift3] = state->returnSpeed;
-	servo[horiz] = state->horizPos;
+	motor[frontBottomLift] = state->liftSpeed;
+	motor[backBottomLift] = state->liftSpeed;
+	motor[frontTopLift] = state->liftSpeed;
+	motor[backBottomLift] = state->liftSpeed;
 	servo[vert1] = state->vert1Pos;
 	servo[vert2] = state->vert2Pos;
 }
@@ -240,24 +430,28 @@ void updateAllMotors(State *state)
 void showDiagnostics(State *state)
 {
 	//create label
-	string sWristHorizPos = "horiz = ";
-	string sWristVert1Pos = "vert1 = ";
-	string sWristVert2Pos = "vert2 = ";
+	string sVert1Pos = "vert1 = ";
+	string sVert2Pos = "vert2 = ";
+	string height = "height =";
+	string batteryLevel = "power = ";
 
 	//store variable in a string
-	string string1 = state->horizPos;
-	string string2 = state->vert1Pos;
-	string string3 = state->vert2Pos;
+	string string1 = ServoValue[vert1]; //state->vert1Pos;
+	string string2 = ServoValue[vert2]; //state->vert2Pos;
+	string string3 = getHeight();
+	string string4 = externalBatteryAvg;
 
 	//concat variable with label
-	strcat(sWristHorizPos, string1);
-	strcat(sWristVert1Pos, string2);
-	strcat(sWristVert2Pos, string3);
+	strcat(sVert1Pos, string1);
+	strcat(sVert2Pos, string2);
+	strcat(height, string3);
+	strcat(batteryLevel, string4);
 
 	eraseDisplay();
 
 	//display label and value
-	nxtDisplayTextLine(1, sWristHorizPos);
-	nxtDisplayTextLine(3, sWristVert1Pos);
-	nxtDisplayTextLine(5, sWristVert2Pos);
+	nxtDisplayTextLine(1, sVert1Pos);
+	nxtDisplayTextLine(2, sVert2Pos);
+	nxtDisplayTextLine(3, height);
+	nxtDisplayTextLine(4, batteryLevel);
 }

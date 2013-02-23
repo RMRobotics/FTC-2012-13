@@ -1,14 +1,17 @@
 #pragma config(Hubs,  S1, HTMotor,  HTMotor,  HTMotor,  HTServo)
 #pragma config(Sensor, S1,     ,               sensorI2CMuxController)
-#pragma config(Motor,  mtr_S1_C1_1,     leftTread,     tmotorTetrix, openLoop, reversed)
-#pragma config(Motor,  mtr_S1_C1_2,     rightTread,    tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C2_1,     lift,          tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C2_2,     lift2,         tmotorTetrix, openLoop, reversed)
-#pragma config(Motor,  mtr_S1_C3_1,     motorH,             tmotorTetrix, openLoop)
-#pragma config(Motor,  mtr_S1_C3_2,     motorI,        tmotorTetrix, openLoop)
-#pragma config(Servo,  srvo_S1_C4_1,    wristHoriz,           tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_2,    wristVert1,           tServoStandard)
-#pragma config(Servo,  srvo_S1_C4_3,    wristVert2,           tServoStandard)
+#pragma config(Sensor, S2,     HTGYRO,         sensorAnalogInactive)
+#pragma config(Sensor, S3,     HTColor,        sensorI2CCustom)
+#pragma config(Sensor, S4,     sonar,          sensorSONAR)
+#pragma config(Motor,  mtr_S1_C1_1,     rightTread,    tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C1_2,     leftTread,     tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C2_1,     frontBottomLift, tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C2_2,     backBottomLift, tmotorTetrix, openLoop, reversed)
+#pragma config(Motor,  mtr_S1_C3_1,     frontTopLift,  tmotorTetrix, openLoop)
+#pragma config(Motor,  mtr_S1_C3_2,     backTopLift,   tmotorTetrix, openLoop, reversed)
+#pragma config(Servo,  srvo_S1_C4_1,    servo1,               tServoNone)
+#pragma config(Servo,  srvo_S1_C4_2,    vert1,                tServoStandard)
+#pragma config(Servo,  srvo_S1_C4_3,    vert2,                tServoStandard)
 #pragma config(Servo,  srvo_S1_C4_4,    servo4,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_5,    servo5,               tServoNone)
 #pragma config(Servo,  srvo_S1_C4_6,    servo6,               tServoNone)
@@ -16,17 +19,35 @@
 
 task main()
 {
-	while (true)
+	servo[vert1] = 225;
+	servo[vert2] = 220;
+
+  while (true)
 	{
 		if(nNxtButtonPressed == 2) { // If grey left arrow on NXT is pressed, lower lift.
-			motor[lift] = -30;
-			motor[lift2] = -30;
+			motor[frontBottomLift] = -15;
+			motor[backBottomLift] = -15;
+			motor[frontTopLift] = -15;
+			motor[backTopLift] = -15;
 		} else if (nNxtButtonPressed == 1) { // If grey right arrow on NXT is pressed, raise lift.
-			motor[lift] = 100;
-			motor[lift2] = 100;
+			motor[frontBottomLift] = 100;
+			motor[backBottomLift] = 100;
+			motor[frontTopLift] = 100;
+			motor[backTopLift] = 100;
 		} else {
-			motor[lift] = 0;
-			motor[lift2] = 0;
+			motor[frontBottomLift] = 0;
+			motor[backBottomLift] = 0;
+			motor[frontTopLift] = 0;
+			motor[backTopLift] = 0;
+		}
+		if(nNxtButtonPressed == 3) {
+			motor[leftTread] = 100;
+			motor[rightTread] = 100;
+			servo[vert1] = ServoValue[vert1] + 1;
+			servo[vert2] = ServoValue[vert2] + 1;
+		}	else {
+			motor[leftTread] = 0;
+			motor[leftTread] = 0;
 		}
 	}
 }
